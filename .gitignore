@@ -1,0 +1,17 @@
+# Windows alternate-data-stream marker files (from downloaded/copied files)
+*Zone.Identifier
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Data
+*.db
+data/
+
+# Editors
+.vscode/
+.idea/
