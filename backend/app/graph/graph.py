@@ -10,7 +10,7 @@ Both are enforced here, at write time, rather than discovered later during
 traversal.
 """
 
-from app.models import Entity, Relationship
+from app.models import Entity, Relationship, RelationshipType
 
 
 class EntityNotFoundError(KeyError):
@@ -76,6 +76,42 @@ class Graph:
         self._outgoing[rel.source_entity_id].remove(relationship_id)
         self._incoming[rel.target_entity_id].remove(relationship_id)
         del self._relationships[relationship_id]
+
+    # -------------------------------------------------------------- queries
+
+    def get_outgoing(self, entity_id: str) -> list[Relationship]:
+        """Relationships where entity_id is the source. O(k), k = out-degree."""
+        if entity_id not in self._entities:
+            raise EntityNotFoundError(entity_id)
+        return [self._relationships[rid] for rid in self._outgoing[entity_id]]
+
+    def get_incoming(self, entity_id: str) -> list[Relationship]:
+        """Relationships where entity_id is the target. O(k), k = in-degree."""
+        if entity_id not in self._entities:
+            raise EntityNotFoundError(entity_id)
+        return [self._relationships[rid] for rid in self._incoming[entity_id]]
+
+    def get_neighbors(
+        self, entity_id: str, relationship_type: RelationshipType | None = None
+    ) -> list[Entity]:
+        """Entities directly connected to entity_id, in either direction.
+
+        Undirected on purpose — this answers "what's connected to X", not
+        "what does X point at" (that's get_outgoing). Pass relationship_type
+        to only follow edges of that type.
+        """
+        if entity_id not in self._entities:
+            raise EntityNotFoundError(entity_id)
+
+        neighbor_ids: set[str] = set()
+        for rel in self.get_outgoing(entity_id):
+            if relationship_type is None or rel.relationship_type == relationship_type:
+                neighbor_ids.add(rel.target_entity_id)
+        for rel in self.get_incoming(entity_id):
+            if relationship_type is None or rel.relationship_type == relationship_type:
+                neighbor_ids.add(rel.source_entity_id)
+
+        return [self._entities[nid] for nid in neighbor_ids]
 
     # ------------------------------------------------------------- sizing
 
