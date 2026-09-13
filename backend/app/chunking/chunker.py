@@ -11,6 +11,7 @@ relationship-aware. Later versions replace the boundary-decision rule;
 the packing/offset-tracking mechanics built here carry forward.
 """
 
+from app.chunking.paragraphs import split_paragraphs
 from app.config import settings
 from app.models import Chunk, Document
 
@@ -44,7 +45,7 @@ def chunk_document(document: Document, max_chunk_size: int | None = None) -> lis
     if max_chunk_size is None:
         max_chunk_size = settings.chunk_size
 
-    paragraphs = _split_paragraphs(document.content)
+    paragraphs = split_paragraphs(document.content)
 
     chunks: list[Chunk] = []
     current_start: int | None = None
@@ -79,18 +80,3 @@ def chunk_document(document: Document, max_chunk_size: int | None = None) -> lis
         flush()
 
     return chunks
-
-
-def _split_paragraphs(text: str) -> list[tuple[int, int, str]]:
-    """Return (start_offset, end_offset, text) per blank-line-separated
-    paragraph, offsets relative to the original `text`."""
-    raw_paragraphs = [p for p in text.split("\n\n") if p.strip()]
-    results: list[tuple[int, int, str]] = []
-    search_from = 0
-    for para in raw_paragraphs:
-        stripped = para.strip("\n")
-        start = text.index(stripped, search_from)
-        end = start + len(stripped)
-        results.append((start, end, stripped))
-        search_from = end
-    return results
