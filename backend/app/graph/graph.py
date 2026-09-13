@@ -113,6 +113,18 @@ class Graph:
 
         return [self._entities[nid] for nid in neighbor_ids]
 
+    # ---------------------------------------------------------- enumeration
+
+    def list_entities(self) -> list[Entity]:
+        """Every entity in the graph. Needed by the persistence layer to
+        snapshot the graph — nothing else in Graph exposes a full listing,
+        only by-id lookups."""
+        return list(self._entities.values())
+
+    def list_relationships(self) -> list[Relationship]:
+        """Every relationship in the graph. Same reason as list_entities."""
+        return list(self._relationships.values())
+
     # ------------------------------------------------------------- sizing
 
     def __len__(self) -> int:
