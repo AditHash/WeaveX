@@ -9,14 +9,16 @@ the program, start it again, load, keep traversing.
 
 All SQL lives here. Graph (app/graph/graph.py) has zero knowledge of
 SQLite — this repository only calls Graph's public methods
-(list_entities/list_relationships to read, add_entity/add_relationship
-to write).
+(list_entities/list_relationships/list_evidence to read, add_entity/
+add_relationship/add_evidence to write).
 
-Only entities/relationships/aliases are persisted. documents/chunks/
-evidence tables are deliberately not built yet: nothing produces those
-objects until the chunking/extraction/provenance phases, and Graph
-itself doesn't hold them today — persisting tables nothing writes to
-would be exactly the premature-scaffolding rule 22 warns against.
+documents/chunks tables are still deliberately not built: nothing
+persists a Document/Chunk through Graph yet (they flow through the
+ingestion pipeline but Graph itself doesn't hold them). evidence WAS in
+that same "not yet" category as of Phase 6 — it's added now because
+Phase 17's graph builder is the first thing that actually produces
+Evidence rows that need to survive a restart; persisting it now is
+"something writes to it" catching up, not scope creep ahead of it.
 """
 
 import json
@@ -24,7 +26,13 @@ import sqlite3
 from pathlib import Path
 
 from app.graph import Graph
-from app.models import Entity, EntityType, Relationship, RelationshipType
+from app.models import (
+    Entity,
+    EntityType,
+    Evidence,
+    Relationship,
+    RelationshipType,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entities (
@@ -47,6 +55,14 @@ CREATE TABLE IF NOT EXISTS relationships (
     relationship_type TEXT NOT NULL,
     confidence REAL NOT NULL,
     metadata TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS evidence (
+    id TEXT PRIMARY KEY,
+    relationship_id TEXT NOT NULL REFERENCES relationships(id),
+    chunk_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    confidence REAL NOT NULL
 );
 """
 
@@ -71,6 +87,7 @@ class SQLiteGraphRepository:
     def save_graph(self, graph: Graph) -> None:
         """Overwrite the on-disk snapshot with the graph's current state."""
         cur = self._conn.cursor()
+        cur.execute("DELETE FROM evidence")
         cur.execute("DELETE FROM entity_aliases")
         cur.execute("DELETE FROM relationships")
         cur.execute("DELETE FROM entities")
@@ -107,6 +124,14 @@ class SQLiteGraphRepository:
                     rel.confidence,
                     json.dumps(rel.metadata),
                 ),
+            )
+
+        for ev in graph.list_evidence():
+            cur.execute(
+                "INSERT INTO evidence "
+                "(id, relationship_id, chunk_id, text, confidence) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (ev.id, ev.relationship_id, ev.chunk_id, ev.text, ev.confidence),
             )
 
         self._conn.commit()
@@ -155,5 +180,17 @@ class SQLiteGraphRepository:
                 metadata=json.loads(metadata),
             )
             graph.add_relationship(relationship)
+
+        for ev_id, relationship_id, chunk_id, text, confidence in cur.execute(
+            "SELECT id, relationship_id, chunk_id, text, confidence FROM evidence"
+        ):
+            evidence = Evidence(
+                id=ev_id,
+                relationship_id=relationship_id,
+                chunk_id=chunk_id,
+                text=text,
+                confidence=confidence,
+            )
+            graph.add_evidence(evidence)
 
         return graph

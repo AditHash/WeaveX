@@ -142,10 +142,14 @@ class FastAPICorpus:
         )
 
     def build_graph(self) -> Graph:
-        """A populated Graph with every entity + relationship added."""
+        """A populated Graph with every entity + relationship + evidence
+        row added — a fully realistic graph, not just entities/edges with
+        provenance floating separately."""
         graph = Graph()
         for entity in self.entities.values():
             graph.add_entity(entity)
         for rel in self.relationships:
             graph.add_relationship(rel)
+        for ev in self.evidence:
+            graph.add_evidence(ev)
         return graph

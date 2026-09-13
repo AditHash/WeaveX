@@ -4,13 +4,16 @@ Traversal (BFS, subgraph, find_path) is a separate phase — this file only
 owns the container and its integrity rules:
 
   - a relationship can't reference an entity that doesn't exist
-  - removing an entity removes every relationship touching it (no orphans)
+  - evidence can't reference a relationship that doesn't exist
+  - removing an entity removes every relationship touching it, which in
+    turn removes every evidence row attached to those relationships (no
+    orphans at any level)
 
-Both are enforced here, at write time, rather than discovered later during
-traversal.
+All enforced here, at write time, rather than discovered later during
+traversal or, worse, silently losing provenance.
 """
 
-from app.models import Entity, Relationship, RelationshipType
+from app.models import Entity, Evidence, Relationship, RelationshipType
 
 
 class EntityNotFoundError(KeyError):
@@ -21,9 +24,12 @@ class Graph:
     def __init__(self) -> None:
         self._entities: dict[str, Entity] = {}
         self._relationships: dict[str, Relationship] = {}
+        self._evidence: dict[str, Evidence] = {}
         # adjacency index: entity_id -> list of relationship_ids
         self._outgoing: dict[str, list[str]] = {}
         self._incoming: dict[str, list[str]] = {}
+        # evidence index: relationship_id -> list of evidence_ids
+        self._evidence_by_relationship: dict[str, list[str]] = {}
 
     # ------------------------------------------------------------ entities
 
@@ -73,9 +79,40 @@ class Graph:
         if rel is None:
             raise KeyError(relationship_id)
 
+        # cascade: a relationship's evidence is meaningless once the
+        # relationship it supports is gone
+        for evidence_id in list(self._evidence_by_relationship.get(relationship_id, [])):
+            del self._evidence[evidence_id]
+        self._evidence_by_relationship.pop(relationship_id, None)
+
         self._outgoing[rel.source_entity_id].remove(relationship_id)
         self._incoming[rel.target_entity_id].remove(relationship_id)
         del self._relationships[relationship_id]
+
+    # ------------------------------------------------------------- evidence
+
+    def add_evidence(self, evidence: Evidence) -> None:
+        if evidence.id in self._evidence:
+            raise ValueError(f"evidence '{evidence.id}' already exists")
+        if evidence.relationship_id not in self._relationships:
+            raise KeyError(
+                f"relationship '{evidence.relationship_id}' does not exist"
+            )
+
+        self._evidence[evidence.id] = evidence
+        self._evidence_by_relationship.setdefault(evidence.relationship_id, []).append(
+            evidence.id
+        )
+
+    def get_evidence(self, relationship_id: str) -> list[Evidence]:
+        """Every evidence row supporting one relationship. O(k), k =
+        evidence count for that relationship — not a scan of all evidence."""
+        if relationship_id not in self._relationships:
+            raise KeyError(f"relationship '{relationship_id}' does not exist")
+        return [
+            self._evidence[eid]
+            for eid in self._evidence_by_relationship.get(relationship_id, [])
+        ]
 
     # -------------------------------------------------------------- queries
 
@@ -124,6 +161,10 @@ class Graph:
     def list_relationships(self) -> list[Relationship]:
         """Every relationship in the graph. Same reason as list_entities."""
         return list(self._relationships.values())
+
+    def list_evidence(self) -> list[Evidence]:
+        """Every evidence row in the graph. Same reason as list_entities."""
+        return list(self._evidence.values())
 
     # ------------------------------------------------------------- sizing
 

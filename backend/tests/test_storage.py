@@ -44,6 +44,10 @@ def test_save_and_load_round_trip_preserves_everything(tmp_path):
     for rel in graph.list_relationships():
         assert reloaded_graph.get_relationship(rel.id) == rel
 
+    assert len(reloaded_graph.list_evidence()) == len(graph.list_evidence())
+    for rel in graph.list_relationships():
+        assert reloaded_graph.get_evidence(rel.id) == graph.get_evidence(rel.id)
+
 
 def test_reloaded_graph_is_fully_traversable(tmp_path):
     # The actual point of persistence: not just "data comes back", but
@@ -121,6 +125,7 @@ def test_empty_graph_round_trips(tmp_path):
 
     assert len(reloaded) == 0
     assert reloaded.list_relationships() == []
+    assert reloaded.list_evidence() == []
 
 
 def test_entity_with_none_description_round_trips(tmp_path):
